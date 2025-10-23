@@ -1,0 +1,19 @@
+# Logs
+Logs/
+
+# Excel temp files
+~$*.xlsx
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Misc
+*.log
+*.tmp
+
