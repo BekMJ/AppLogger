@@ -2,7 +2,7 @@
 setlocal
 
 REM Path to the app you want to launch after logging
-set "APP_PATH=C:\Program Files\ToupTek\ToupView\x64\toupview.exe"
+set "APP_PATH=C:\Program Files (x86)\Zolix\RTSScan\RTSScan.exe"
 set "APP_ARGS="
 
 REM Derive script directory to locate AppLogger.ps1
@@ -15,7 +15,7 @@ if not exist "%LOGGER_PS%" (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -STA -File "%LOGGER_PS%" -AppPath "%APP_PATH%" -AppArgs "%APP_ARGS%" -AppName "ToupView" -ForceCsvOnly
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File "%LOGGER_PS%" -AppPath "%APP_PATH%" -AppArgs "%APP_ARGS%" -AppName "RTTScan" -ForceCsvOnly
 
 set "RC=%ERRORLEVEL%"
 
