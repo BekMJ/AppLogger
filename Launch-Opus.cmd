@@ -2,7 +2,7 @@
 setlocal
 
 REM Path to the app you want to launch after logging
-set "APP_PATH=C:\Program Files\FlowVision\FlowVision.exe"
+set "APP_PATH=C:\Program Files\Bruker\OPUS_8.7.31\OpusCore.exe"
 set "APP_ARGS="
 
 REM Derive script directory to locate AppLogger.ps1
@@ -15,7 +15,11 @@ if not exist "%LOGGER_PS%" (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%LOGGER_PS%" -AppPath "%APP_PATH%" -AppArgs "%APP_ARGS%" -AppName "FlowVision"
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File "%LOGGER_PS%" -AppPath "%APP_PATH%" -AppArgs "%APP_ARGS%" -AppName "Opus" -ForceCsvOnly
 
-endlocal
+set "RC=%ERRORLEVEL%"
+
+endlocal & exit /b %RC%
+
+
 

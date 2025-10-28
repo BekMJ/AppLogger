@@ -2,11 +2,21 @@ Param(
     [Parameter(Mandatory=$false)] [string] $AppPath,
     [Parameter(Mandatory=$false)] [string] $AppArgs,
     [Parameter(Mandatory=$false)] [string] $AppName,
-    [Parameter(Mandatory=$false)] [string] $LogDir = (Join-Path -Path $PSScriptRoot -ChildPath 'Logs'),
+    [Parameter(Mandatory=$false)] [string] $LogDir,
     [Parameter(Mandatory=$false)] [switch] $ForceCsvOnly
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Resolve default log directory robustly (avoid $PSScriptRoot empty issues)
+if ([string]::IsNullOrWhiteSpace($LogDir)) {
+    $scriptDir = $PSScriptRoot
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        try { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path } catch { }
+        if ([string]::IsNullOrWhiteSpace($scriptDir)) { $scriptDir = (Get-Location).Path }
+    }
+    $LogDir = Join-Path -Path $scriptDir -ChildPath 'Logs'
+}
 
 function Ensure-DirectoryExists {
     Param([string] $Directory)
@@ -17,6 +27,16 @@ function Get-LogBaseName {
     Param([string] $Prefix = 'LabUsage')
     $yyyymm = Get-Date -Format 'yyyyMM'
     return "$Prefix-$yyyymm"
+}
+
+function Write-LauncherLog {
+    Param([string] $Message)
+    try {
+        Ensure-DirectoryExists -Directory $LogDir
+        $logFile = Join-Path -Path $LogDir -ChildPath 'Launcher.log'
+        $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        Add-Content -Path $logFile -Value ("$ts`t$Message")
+    } catch { }
 }
 
 function Test-ExcelAvailable {
@@ -151,9 +171,23 @@ function Show-LoggerForm {
     $lblAdvisor.Location = New-Object System.Drawing.Point(15, 60)
     $lblAdvisor.AutoSize = $true
 
+    $cmbAdvisor = New-Object System.Windows.Forms.ComboBox
+    $cmbAdvisor.Location = New-Object System.Drawing.Point(120, 56)
+    $cmbAdvisor.Size = New-Object System.Drawing.Size(120, 20)
+    $cmbAdvisor.DropDownStyle = 'DropDownList'
+    [void]$cmbAdvisor.Items.AddRange(@('Dr.Weng','Others'))
+    $cmbAdvisor.SelectedIndex = 0
+
+    $lblAdvisorOther = New-Object System.Windows.Forms.Label
+    $lblAdvisorOther.Text = 'Specify:'
+    $lblAdvisorOther.Location = New-Object System.Drawing.Point(250, 60)
+    $lblAdvisorOther.AutoSize = $true
+    $lblAdvisorOther.Visible = $false
+
     $txtAdvisor = New-Object System.Windows.Forms.TextBox
-    $txtAdvisor.Location = New-Object System.Drawing.Point(120, 56)
-    $txtAdvisor.Size = New-Object System.Drawing.Size(260, 20)
+    $txtAdvisor.Location = New-Object System.Drawing.Point(305, 56)
+    $txtAdvisor.Size = New-Object System.Drawing.Size(75, 20)
+    $txtAdvisor.Visible = $false
 
     $lblExperiment = New-Object System.Windows.Forms.Label
     $lblExperiment.Text = 'Experiment:'
@@ -174,21 +208,19 @@ function Show-LoggerForm {
     $btnCancel.Location = New-Object System.Drawing.Point(300, 150)
 
     $validate = {
-        if ([string]::IsNullOrWhiteSpace($txtName.Text) -or [string]::IsNullOrWhiteSpace($txtAdvisor.Text) -or [string]::IsNullOrWhiteSpace($txtExperiment.Text)) {
+        $needsOther = ($cmbAdvisor.SelectedItem -eq 'Others')
+        $txtAdvisor.Visible = $needsOther
+        $lblAdvisorOther.Visible = $needsOther
+        if ([string]::IsNullOrWhiteSpace($txtName.Text) -or [string]::IsNullOrWhiteSpace($txtExperiment.Text) -or ($needsOther -and [string]::IsNullOrWhiteSpace($txtAdvisor.Text))) {
             $btnOk.Enabled = $false
         } else { $btnOk.Enabled = $true }
     }
     $txtName.Add_TextChanged($validate)
+    $cmbAdvisor.Add_SelectedIndexChanged($validate)
     $txtAdvisor.Add_TextChanged($validate)
     $txtExperiment.Add_TextChanged($validate)
 
-    $result = $null
     $btnOk.Add_Click({
-        $result = @{
-            Name = $txtName.Text.Trim()
-            Advisor = $txtAdvisor.Text.Trim()
-            Experiment = $txtExperiment.Text.Trim()
-        }
         $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Close()
     })
@@ -200,10 +232,20 @@ function Show-LoggerForm {
     $form.AcceptButton = $btnOk
     $form.CancelButton = $btnCancel
 
-    $form.Controls.AddRange(@($lblName,$txtName,$lblAdvisor,$txtAdvisor,$lblExperiment,$txtExperiment,$btnOk,$btnCancel))
+    $form.Controls.AddRange(@($lblName,$txtName,$lblAdvisor,$cmbAdvisor,$lblAdvisorOther,$txtAdvisor,$lblExperiment,$txtExperiment,$btnOk,$btnCancel))
+    & $validate
 
     [void]$form.ShowDialog()
-    return $result
+    if ($form.DialogResult -eq [System.Windows.Forms.DialogResult]::OK) {
+        $advisorValue = if ($cmbAdvisor.SelectedItem -eq 'Others') { $txtAdvisor.Text.Trim() } else { [string]$cmbAdvisor.SelectedItem }
+        return @{
+            Name = $txtName.Text.Trim()
+            Advisor = $advisorValue
+            Experiment = $txtExperiment.Text.Trim()
+        }
+    } else {
+        return $null
+    }
 }
 
 function Start-TargetApp {
@@ -211,26 +253,45 @@ function Start-TargetApp {
         [string] $Path,
         [string] $Arguments
     )
-    if ([string]::IsNullOrWhiteSpace($Path)) { return }
-    if (Test-Path -LiteralPath $Path) {
-        Start-Process -FilePath $Path -ArgumentList $Arguments -WindowStyle Normal | Out-Null
-    } else {
-        Start-Process -FilePath $Path -ArgumentList $Arguments -WindowStyle Normal | Out-Null
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'App path is empty.' }
+    if (-not (Test-Path -LiteralPath $Path)) { throw "App not found: $Path" }
+    $wd = [System.IO.Path]::GetDirectoryName($Path)
+    Write-LauncherLog "Launching primary: Path='$Path' Args='$Arguments' WD='$wd'"
+    try {
+        $proc = Start-Process -FilePath $Path -ArgumentList $Arguments -WorkingDirectory $wd -WindowStyle Normal -PassThru -ErrorAction Stop
+        if ($null -ne $proc) { Write-LauncherLog "Primary started PID=$($proc.Id)" }
+        return
+    } catch {
+        Write-LauncherLog ("Primary launch failed: " + $_.Exception.Message)
+    }
+    # Fallback via cmd start
+    try {
+        $quotedPath = '"' + $Path + '"'
+        $argPart = if ([string]::IsNullOrWhiteSpace($Arguments)) { '' } else { ' ' + $Arguments }
+        $cmdArgs = '/c start "" ' + $quotedPath + $argPart
+        Write-LauncherLog "Fallback: cmd.exe $cmdArgs"
+        Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -WorkingDirectory $wd -WindowStyle Normal -ErrorAction Stop | Out-Null
+        Write-LauncherLog "Fallback invoked successfully"
+    } catch {
+        Write-LauncherLog ("Fallback failed: " + $_.Exception.Message)
+        throw
     }
 }
 
 # Main
 try {
+    Ensure-DirectoryExists -Directory $LogDir
     if (-not [string]::IsNullOrWhiteSpace($AppName)) {
-        $title = "Lab Usage Logger — $AppName"
+        $title = "Lab Usage Logger - $AppName"
     } elseif (-not [string]::IsNullOrWhiteSpace($AppPath)) {
-        $title = "Lab Usage Logger — " + [System.IO.Path]::GetFileNameWithoutExtension($AppPath)
+        $title = "Lab Usage Logger - " + [System.IO.Path]::GetFileNameWithoutExtension($AppPath)
     } else {
         $title = 'Lab Usage Logger'
     }
+    Write-LauncherLog ("Starting with Title='" + $title + "' AppPath='" + $AppPath + "' LogDir='" + $LogDir + "'")
 
     $inputData = Show-LoggerForm -Title $title
-    if ($null -eq $inputData) { exit 1 }
+    if ($null -eq $inputData) { Write-LauncherLog 'User cancelled input dialog'; exit 1 }
 
     $entry = @{
         Timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
@@ -242,6 +303,7 @@ try {
         App = if ($AppName) { $AppName } elseif ($AppPath) { [System.IO.Path]::GetFileNameWithoutExtension($AppPath) } else { '' }
     }
 
+    Write-LauncherLog 'Writing CSV entry'
     $csvPath = Write-LogToCsv -Directory $LogDir -Entry $entry
 
     if (-not $ForceCsvOnly) {

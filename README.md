@@ -4,21 +4,25 @@ This PowerShell-based launcher prompts users for Name, Advisor, and Experiment b
 
 ### Files
 - `AppLogger.ps1`: GUI logger and launcher
+ - `Launch-ToupView.cmd`: Launcher for ToupView
+- `Launch-Opus.cmd`: Launcher for Opus
+- `Launch-ThorCam.cmd`: Launcher for ThorCam
 - `Launch-FlowVision.cmd`: Example launcher for FlowVision
 - `Logs/`: Created automatically to store monthly CSV/XLSX (e.g., `LabUsage-202510.csv` and `.xlsx`)
 
 ### How it works
-1. User double-clicks the app launcher (e.g., `Launch-FlowVision.cmd`).
+1. User double-clicks the app launcher (e.g., `Launch-ToupView.cmd`, `Launch-Opus.cmd`, `Launch-ThorCam.cmd`, or `Launch-FlowVision.cmd`).
 2. A small form appears asking for Name, Advisor, Experiment.
 3. On OK, a row is appended to `Logs/LabUsage-YYYYMM.csv` (and to `.xlsx` if Excel is available).
 4. The target app is started.
 
 ### Setup
 1. Copy this folder to the lab PC (e.g., `C:\LabTools\AppLogger`).
-2. Edit `Launch-FlowVision.cmd`:
+2. Edit the launcher(s) you need:
+   - `Launch-ToupView.cmd`, `Launch-Opus.cmd`, `Launch-ThorCam.cmd` (and `Launch-FlowVision.cmd` as an example)
    - Set `APP_PATH` to the actual application path.
    - Optionally set `APP_ARGS`.
-3. Create a desktop shortcut for the `.cmd` and instruct users to launch the app via that shortcut.
+3. Create a desktop shortcut for the chosen `.cmd` and instruct users to launch the app via that shortcut.
 
 ### Creating more launchers
 Copy `Launch-FlowVision.cmd` to a new file (e.g., `Launch-YourApp.cmd`) and change:
